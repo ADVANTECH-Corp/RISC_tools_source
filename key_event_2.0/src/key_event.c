@@ -97,6 +97,21 @@ int getEventName(char* ret_string)
 	return TEST_FAIL;
 }
 
+void SuspendProcess()
+{
+	char cmd[64];
+	printf("\n-------------------------  suspend  ----------------------\n");
+	sprintf(cmd, "echo mem > /sys/power/state");
+	system(cmd);
+}
+void PowerOffProcess()
+{
+	char cmd[64];
+	printf("\n-------------------------  poweroff  ----------------------\n");
+	sprintf(cmd, "poweroff");
+	system(cmd);
+}
+
 int main(void)
 {
 	int key_state, fd, ret, type, code;
@@ -104,9 +119,10 @@ int main(void)
 	char cmd[64];
 	int start_count=0, suspend_flag=0, poweroff_flag=0;
 	char event_cmd[28];
+        struct timeval start_time,end_time;
+        int interval_time;
 
-	if(getBoardName(board) == TEST_FAIL)
-	{
+	if(getBoardName(board) == TEST_FAIL) {
 		printf("\n Get board failed!\n");
 		return -1;
 	}
@@ -114,8 +130,7 @@ int main(void)
 	memset(event_cmd,'\0', sizeof(event_cmd));	
 	ret = getEventName(event_cmd);
 
-	if(ret == TEST_FAIL)
-	{
+	if(ret == TEST_FAIL) {
 		printf("\n Get event command failed!\n");
 		return -1;
 	}
@@ -144,35 +159,63 @@ int main(void)
 
 		switch(code) {
 			case KEY_SUSPEND:
-				if(!suspend_flag) { /* sleep mode */
-					if(key_state) {
- 						start_count=1;
-					} else {
-						if(start_count) {
-							printf("\n-------------------------  suspend  ----------------------\n");
+				if (strstr(board, "ROM-7420")){
+					if(suspend_flag) { /* sleep mode */
+						if(!key_state) {
+							SuspendProcess();
+							suspend_flag = 0;
+						}
+					} else  
+						if(!key_state)
 							suspend_flag = 1;
-							sprintf(cmd, "echo mem > /sys/power/state");
-							system(cmd);
-							start_count=0;
-						}	
+				} else if (strstr(board, "ROM-7421")){
+					if(!suspend_flag) { /* sleep mode */
+						if(!key_state) {
+							SuspendProcess();
+							suspend_flag = 1;
+						}
+					} else { /* wake up mode */
+						if(!key_state){
+							suspend_flag = 0;
+						}
 					}
-				} else { /* wake up mode */
-					if(!key_state)
-						suspend_flag = 0;
 				}
 				break;
 			case KEY_POWER:
-				if(!poweroff_flag) {
-					if(!key_state) {
-						printf("\n-------------------------  poweroff  ----------------------\n");
-						poweroff_flag = 1;
-						sprintf(cmd, "poweroff");
-						system(cmd);
+				if (strstr(board, "ROM-7421")){
+					if(key_state)
+						PowerOffProcess(); 
+				} else if (strstr(board, "ROM-5420")) {
+					if(key_state) gettimeofday(&start_time,NULL);
+					else {
+						gettimeofday(&end_time,NULL);
+						interval_time = end_time.tv_sec - start_time.tv_sec;
+						printf("Time interval is %d\n",interval_time);
+						if ( interval_time < 1) 
+							SuspendProcess();        
+						else 
+							PowerOffProcess();
+					}
+				} else if (strstr(board, "ROM-3420")) {
+					if(!suspend_flag) { /* sleep mode */
+						if(key_state) gettimeofday(&start_time,NULL);
+						else {
+							gettimeofday(&end_time,NULL);
+							interval_time = end_time.tv_sec - start_time.tv_sec;
+							printf("Time interval is %d\n",interval_time);
+							if ( interval_time < 1) {    
+								SuspendProcess();   
+								suspend_flag = 1;
+							} else 
+								PowerOffProcess();
+						}
+					} else {
+						if(!key_state)
+							suspend_flag = 0;
 					}
 				}
 				break;
 			default:
-				code = 0;
 				break;
 		} /* switch(code) */
 	} /* while(1) */
