@@ -8,218 +8,162 @@
 #include <string.h>
 #include <signal.h>
 
-#define TEST_PASS 0
-#define TEST_FAIL -1
-char board[20];
-
-int getBoardName(char* ret_string)
-{
-	FILE *pp;
-	char tmp[20];
-
-	if ((pp = popen("cat /proc/board", "r")) == NULL)
-	{
-		printf("\n [getBoardName] popen() error!\n");
-		return TEST_FAIL;
-	}
-	if (fgets(tmp, 12, pp))
-	{
-		pclose(pp);
-		strncpy(ret_string, tmp, strlen(tmp));
-		return TEST_PASS;
-	} else {
-		pclose(pp);
-		return TEST_FAIL;
-	}
-}
-
-int getLinuxBase()
-{
-	FILE *pp;
-	char tmp[80];
-
-	if ((pp = popen("cat /etc/issue |grep Distro", "r")) == NULL)
-	{
-		printf("\n [getLinuxBase] popen() error!\n");
-		return TEST_FAIL;
-	}
-	if (fgets(tmp, 80, pp)) //Yocto
-	{
-		pclose(pp);
-		return TEST_PASS;
-	} 
-	else //Ltib 
-	{
-		pclose(pp);
-		return TEST_FAIL;
-	}
-}
-
+#define TRUE		1
+#define FALSE		0
+#define	GPIO_NAME	"gpio-keys"
+#define MCU		"MCU"
+#define MCU_DELAY	"Delay"
 int getEventName(char* ret_string)
 {
-	int event_count=0, event_id=0, i;
-	char event_name_cmd[64], event_name[64], event_cmd[28];
-	FILE *pp;
-
-	if(strstr(board, "ROM-3420") != NULL)
-		event_count = 3;
-	else
-		event_count = 2;
-
-	for(i=0; i<event_count; i++)
-	{
-		sprintf(event_name_cmd, "cat /sys/class/input/event%d/device/name", i);
-
-		if ((pp = popen(event_name_cmd, "r")) == NULL) {
-			printf("\n [getEventName] popen() event_name_cmd error!\n");
-			continue;
+	int i = 0;
+	char event_name[64], event_path[28], cmd[64] , buf[16];
+	FILE *fp;
+	
+	while (1) {
+		sprintf(cmd, "cat /sys/class/input/input%d/name", i);
+		fp = popen(cmd , "r");
+		fgets(event_name, sizeof(event_name), fp);
+		//printf("event%d name = %s\n",i,event_name);
+		if(strstr(event_name , GPIO_NAME ) != NULL) {
+			sprintf(event_path, "/dev/input/event%d", i);
+			event_path[strlen(event_path)] = '\0';
+			strncpy(ret_string, event_path, strlen(event_path));
+			pclose(fp);
+			return TRUE;
 		} else {
-			if (fgets(event_name, 10, pp))
-			{
-				pclose(pp);
-				
-				if(!strncmp(event_name, "gpio-keys" , 9))
-				{
-					sprintf(event_cmd, "/dev/input/event%d", i);
-					event_cmd[strlen(event_cmd)] = '\0';
-					strncpy(ret_string, event_cmd, strlen(event_cmd));
-
-					return TEST_PASS;
-				}
-			} else {
-				//printf("\n [getEventName]Get event_name error!\n");
-				pclose(pp);
-				continue;
+			i++;
+			memset(buf ,'\0', sizeof(buf));	
+			sprintf(cmd, "test -d /sys/class/input/input%d && echo Exist",i);
+			fp = popen(cmd , "r");
+			fgets(buf, sizeof(buf), fp);
+			if ( strstr(buf , "Exist" ) == NULL ) {
+				pclose(fp);
+				return FALSE;
 			}
+			
 		}
+		
 	}
-
-	return TEST_FAIL;
 }
 
 void SuspendProcess()
 {
 	char cmd[64];
-	printf("\n-------------------------  suspend  ----------------------\n");
+	printf("\n------------suspend-------------\n");
 	sprintf(cmd, "echo mem > /sys/power/state");
 	system(cmd);
 }
 void PowerOffProcess()
 {
 	char cmd[64];
-	printf("\n-------------------------  poweroff  ----------------------\n");
+	printf("\n------------poweroff------------\n");
 	sprintf(cmd, "poweroff");
 	system(cmd);
 }
-
-int main(void)
+int Check_Label(char *label)
 {
-	int key_state, fd, ret, type, code;
-	struct input_event buf;
-	char cmd[64];
-	int start_count=0, suspend_flag=0, poweroff_flag=0;
+        FILE* fp;
+        char cmd[64],buf[64];
+        sprintf(cmd, "cat /sys/firmware/devicetree/base/gpio-keys/*/label | grep %s -c -i", label);
+        fp = popen(cmd , "r");
+        memset(buf ,'\0', sizeof(buf));
+        fgets(buf, sizeof(buf), fp);
+        pclose(fp);
+        if (atoi(buf))
+                return TRUE;
+        else
+                return FALSE;
+}
+int main(int argc, char **argv)
+{
+	int fd, ret ,suspend_flag=0;
+	struct input_event inputevent;
 	char event_cmd[28];
         struct timeval start_time,end_time;
-        int interval_time;
-
-	if(getBoardName(board) == TEST_FAIL) {
-		printf("\n Get board failed!\n");
-		return -1;
-	}
+        unsigned long long  interval_time;
 
 	memset(event_cmd,'\0', sizeof(event_cmd));	
-	ret = getEventName(event_cmd);
 
-	if(ret == TEST_FAIL) {
-		printf("\n Get event command failed!\n");
-		return -1;
+	if(!getEventName(event_cmd)) {
+		printf("%s: Can't get %s event\n", argv[0], GPIO_NAME);
+		return FALSE;
 	}
 
 	fd = open(event_cmd, O_RDONLY);
-
 	if (fd < 0) {
-		printf("[%s] Open gpio-keys failed.\n", board);
-		return -1;
+		printf("%s: Open gpio-keys failed.\n", argv[0]);
+		return FALSE;
 	} else
-		printf("[%s] Open gpio-keys success.\n", board);
+		printf("%s: Open gpio-keys success.\n", argv[0]);
 
 	while(1) {
-		ret = read(fd,&buf,sizeof(struct input_event));
+		ret = read(fd,&inputevent,sizeof(struct input_event));
 
 		if(ret <= 0) {
 			printf("read fail!\n");
-			return -1;
+			return FALSE;
 		}
-
-		type = buf.type;
-		code = buf.code;
-		key_state = buf.value;
-
-		//printf("\n*** [key_event] type:%d; code:%d, key_state:%d\n", type,code,key_state);
-
-		switch(code) {
-			case KEY_SUSPEND:
-				if (strstr(board, "ROM-7420")){
-					if(suspend_flag) { /* sleep mode */
-						if(!key_state) {
-							SuspendProcess();
-							suspend_flag = 0;
-						}
-					} else  
-						if(!key_state)
-							suspend_flag = 1;
-				} else if (strstr(board, "ROM-7421")){
-					if(!suspend_flag) { /* sleep mode */
-						if(!key_state) {
-							SuspendProcess();
-							suspend_flag = 1;
-						}
-					} else { /* wake up mode */
-						if(!key_state){
-							suspend_flag = 0;
-						}
-					}
-				}
-				break;
-			case KEY_POWER:
-				if (strstr(board, "ROM-7421")){
-					if(key_state)
-						PowerOffProcess(); 
-				} else if (strstr(board, "ROM-5420")) {
-					if(key_state) gettimeofday(&start_time,NULL);
-					else {
-						gettimeofday(&end_time,NULL);
-						interval_time = end_time.tv_sec - start_time.tv_sec;
-						printf("Time interval is %d\n",interval_time);
-						if ( interval_time < 1) 
-							SuspendProcess();        
-						else 
+		switch(inputevent.type){
+			case EV_PWR:
+				switch(inputevent.code) {
+					case KEY_POWER:
+						if(inputevent.value)
 							PowerOffProcess();
-					}
-				} else if (strstr(board, "ROM-3420")) {
-					if(!suspend_flag) { /* sleep mode */
-						if(key_state) gettimeofday(&start_time,NULL);
-						else {
-							gettimeofday(&end_time,NULL);
-							interval_time = end_time.tv_sec - start_time.tv_sec;
-							printf("Time interval is %d\n",interval_time);
-							if ( interval_time < 1) {    
-								SuspendProcess();   
-								suspend_flag = 1;
-							} else 
-								PowerOffProcess();
-						}
-					} else {
-						if(!key_state)
-							suspend_flag = 0;
-					}
+					break;
 				}
 				break;
-			default:
+			case EV_KEY:
+				switch(inputevent.code) {
+					case KEY_SUSPEND:
+						if(!suspend_flag) { /* sleep mode */
+							if(!inputevent.value) {
+								SuspendProcess();
+								suspend_flag = 1;
+							}
+						} else  /* wake up mode */
+							if(!inputevent.value)
+								suspend_flag = 0;
+					break;
+					case KEY_POWER:
+						if (Check_Label(MCU)) {
+							if(!suspend_flag) { /* sleep mode */
+								if(inputevent.value) gettimeofday(&start_time,NULL);
+								else {
+									gettimeofday(&end_time,NULL);
+									interval_time = (end_time.tv_sec*1000000+end_time.tv_usec) - (start_time.tv_sec*1000000+start_time.tv_usec);
+									//printf("start time = %d.%d\n",start_time.tv_sec ,start_time.tv_usec);
+									//printf("end   time = %d.%d\n",end_time.tv_sec, end_time.tv_usec);
+									printf("Time interval is %llu usecs\n",interval_time);
+									if ( interval_time < 1000000) {
+										if(Check_Label(MCU_DELAY)){
+											printf("\n------suspend flag enable------\n");
+											suspend_flag = 1;
+											}
+										SuspendProcess();
+									} else
+										PowerOffProcess();
+								}
+							} else {
+								if(!inputevent.value) {
+									printf("\n------suspend flag disable------\n");
+									suspend_flag = 0;
+								}
+							}
+						} else {
+							if(!suspend_flag) { /* sleep mode */
+								if(!inputevent.value) {
+									SuspendProcess();
+									suspend_flag = 1;
+								}
+							} else  /* wake up mode */
+								if(!inputevent.value)
+									suspend_flag = 0;
+						}
+					break;
+				}
 				break;
-		} /* switch(code) */
+		}
 	} /* while(1) */
-
 	close(fd);
 	return 0;
 }
