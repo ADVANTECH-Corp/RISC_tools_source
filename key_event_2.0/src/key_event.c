@@ -12,7 +12,7 @@
 #define FALSE		0
 #define	GPIO_NAME	"gpio-keys"
 #define MCU		"MCU"
-#define MCU_DELAY	"Delay"
+
 int getEventName(char* ret_string)
 {
 	int i = 0;
@@ -74,6 +74,22 @@ int Check_Label(char *label)
         else
                 return FALSE;
 }
+
+int Check_CPU()
+{
+        FILE* fp;
+        char cmd[64],buf[64];
+        sprintf(cmd, "cat /proc/cpuinfo | grep processor -c");
+        fp = popen(cmd , "r");
+        memset(buf ,'\0', sizeof(buf));
+        fgets(buf, sizeof(buf), fp);
+        pclose(fp);
+        if (atoi(buf) < 3)
+                return TRUE;
+        else
+		return FALSE;
+}
+
 int main(int argc, char **argv)
 {
 	int fd, ret ,suspend_flag=0;
@@ -135,7 +151,7 @@ int main(int argc, char **argv)
 									//printf("end   time = %d.%d\n",end_time.tv_sec, end_time.tv_usec);
 									printf("Time interval is %llu usecs\n",interval_time);
 									if ( interval_time < 1000000) {
-										if(Check_Label(MCU_DELAY)){
+										if(Check_CPU()){ /*if cpu core > 2 , then we should enabel susepnd flag*/
 											printf("\n------suspend flag enable------\n");
 											suspend_flag = 1;
 											}
