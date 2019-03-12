@@ -13,6 +13,11 @@
 #define	GPIO_NAME	"gpio-keys"
 #define MCU		"MCU"
 
+enum distro {
+	UBUNTU_DISTRO = 1,
+	YOCTO_DISTRO,
+};
+
 int getEventName(char* ret_string)
 {
 	int i = 0;
@@ -46,11 +51,43 @@ int getEventName(char* ret_string)
 	}
 }
 
-void SuspendProcess()
+int getLinuxBase(int* distro)
+{
+	FILE *pp;
+	char os_distro[80];
+
+	pp = popen("cat /etc/issue", "r");
+	fgets(os_distro, sizeof(os_distro), pp);
+
+	if ( strstr(os_distro , "Ubuntu") != NULL) {
+		*distro = UBUNTU_DISTRO;
+		printf("getLinuxBase: Ubuntu\n");
+	}
+	else if ( strstr(os_distro , "Yocto") != NULL) {
+		*distro = YOCTO_DISTRO;
+		printf("getLinuxBase: Yocto\n");
+	}
+	else { //Ltib
+		pclose(pp);
+		return FALSE;
+	}
+	pclose(pp);
+	return TRUE;
+}
+
+void SuspendProcess(int os_distro)
 {
 	char cmd[64];
 	printf("\n------------suspend-------------\n");
-	sprintf(cmd, "echo mem > /sys/power/state");
+	switch (os_distro) {
+		case UBUNTU_DISTRO:
+			sprintf(cmd, "systemctl suspend");
+			break;
+		case YOCTO_DISTRO:
+			sprintf(cmd, "echo mem > /sys/power/state");
+			break;
+	}
+	//printf("%s\n", cmd);
 	system(cmd);
 }
 void PowerOffProcess()
@@ -95,9 +132,17 @@ int main(int argc, char **argv)
 	int fd, ret ,suspend_flag=0;
 	struct input_event inputevent;
 	char event_cmd[28];
+	int os_distro;
         struct timeval start_time,end_time;
         unsigned long long  interval_time;
 
+	// Get OS Distro
+	if(!getLinuxBase(&os_distro)) {
+		printf("%s: Not support for this OS distro.\n");
+		return FALSE;
+	}
+
+	// Get Event ID
 	memset(event_cmd,'\0', sizeof(event_cmd));	
 
 	if(!getEventName(event_cmd)) {
@@ -133,7 +178,7 @@ int main(int argc, char **argv)
 					case KEY_SUSPEND:
 						if(!suspend_flag) { /* sleep mode */
 							if(!inputevent.value) {
-								SuspendProcess();
+								SuspendProcess(os_distro);
 								suspend_flag = 1;
 							}
 						} else  /* wake up mode */
@@ -155,7 +200,7 @@ int main(int argc, char **argv)
 											printf("\n------suspend flag enable------\n");
 											suspend_flag = 1;
 											}
-										SuspendProcess();
+										SuspendProcess(os_distro);
 									} else
 										PowerOffProcess();
 								}
@@ -168,7 +213,7 @@ int main(int argc, char **argv)
 						} else {
 							if(!suspend_flag) { /* sleep mode */
 								if(!inputevent.value) {
-									SuspendProcess();
+									SuspendProcess(os_distro);
 									suspend_flag = 1;
 								}
 							} else  /* wake up mode */
