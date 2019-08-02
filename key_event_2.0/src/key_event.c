@@ -67,6 +67,10 @@ int getLinuxBase(int* distro)
 		*distro = YOCTO_DISTRO;
 		printf("getLinuxBase: Yocto\n");
 	}
+	else if ( strstr(os_distro , "sumo") != NULL) {
+		*distro = YOCTO_DISTRO;
+		printf("getLinuxBase: Yocto 2.5\n");
+	}
 	else { //Ltib
 		pclose(pp);
 		return FALSE;
