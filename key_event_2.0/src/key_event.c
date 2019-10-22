@@ -133,12 +133,12 @@ int Check_CPU()
 
 int main(int argc, char **argv)
 {
-	int fd, ret ,suspend_flag=0;
+	int fd, ret ,suspend_flag=0, start_flag=0;
 	struct input_event inputevent;
 	char event_cmd[28];
 	int os_distro;
-        struct timeval start_time,end_time;
-        unsigned long long  interval_time;
+	struct timeval start_time,end_time;
+	unsigned long long  interval_time;
 
 	// Get OS Distro
 	if(!getLinuxBase(&os_distro)) {
@@ -174,6 +174,21 @@ int main(int argc, char **argv)
 					case KEY_POWER:
 						if(inputevent.value)
 							PowerOffProcess();
+					break;
+					case KEY_SUSPEND:
+						if(!suspend_flag) { /* sleep mode */
+							if(inputevent.value) {
+								start_flag = 1;
+							} else {
+								if(start_flag) {
+									suspend_flag = 1;
+									SuspendProcess(os_distro);
+									start_flag = 0;
+								}
+							}
+						} else  /* wake up mode */
+							if(!inputevent.value)
+								suspend_flag = 0;
 					break;
 				}
 				break;
