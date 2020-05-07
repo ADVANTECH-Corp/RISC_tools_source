@@ -6,12 +6,17 @@
 #include <unistd.h>
 #include <string.h>
 #include <linux/input.h>
+#include <pthread.h>
 
 #include "test_utils.h"
 
 #define TRUE		1
 #define FALSE		0
 #define	GPIO_NAME	"gpio-keys"
+#define WDT_OUT		352
+
+int gTimeout;
+pthread_mutex_t timeoutMutex;
 
 void help_info(void);
 
@@ -48,22 +53,54 @@ int getEventName(char* ret_string)
 	}
 }
 
+static void * timeout_handle(void *arg)
+{
+	char cmd[64];
+
+	while(1)
+	{
+		pthread_mutex_lock(&timeoutMutex);
+		if(gTimeout > 0)
+		{
+			gTimeout--;
+			//printf("gTimeout = %d\n", gTimeout);
+		}
+		else
+		{
+			//Set WDT Out
+			sprintf(cmd, "echo %d > /sys/class/gpio/export", WDT_OUT);
+			system(cmd);
+			sprintf(cmd, "echo out > /sys/class/gpio/gpio1/direction");
+			system(cmd);
+			sprintf(cmd, "echo 1 > /sys/class/gpio/gpio1/value");
+			system(cmd);
+			printf("\n------------start reboot------------\n");
+			sprintf(cmd, "reboot");
+			system(cmd);
+		}
+		pthread_mutex_unlock(&timeoutMutex);
+
+		sleep(1);
+	}
+
+	return NULL;
+}
+
 int main(int argc, char * const argv[])
 {
-	int fd, wdt_fd, timeout, test, ret;
+	int fd, timeout, ret;
 	char event_cmd[28];
 	struct input_event inputevent;
-
-	print_name(argv);
+	pthread_t timeoutThread = NULL;
 
 	if (argc < 2) {
 		help_info();
 		return 1;
 	}
 	timeout = atoi(argv[1]);
-	test = atoi(argv[2]);
-	printf("Starting wdt_driver (timeout: %d, test: %s)\n",
-	       timeout, (test == 0) ? "ioctl" : "write");
+	printf("Starting SW_WDT (timeout: %d)\n", timeout);
+
+	gTimeout = timeout;
 
 	// Get Event ID
 	memset(event_cmd,'\0', sizeof(event_cmd));	
@@ -79,18 +116,13 @@ int main(int argc, char * const argv[])
 		exit(1);
 	} else
 		printf("%s: Open gpio-keys success.\n", argv[0]);
-	
-	wdt_fd = open("/dev/watchdog", O_WRONLY);
-	if (wdt_fd == -1) {
-		perror("watchdog");
-		exit(1);
-	}
 
-	printf("Trying to set timeout value=%d seconds\n", timeout);
-	ioctl(wdt_fd, WDIOC_SETTIMEOUT, &timeout);
-	printf("The actual timeout was set to %d seconds\n", timeout);
-	ioctl(wdt_fd, WDIOC_GETTIMEOUT, &timeout);
-	printf("Now reading back -- The timeout is %d seconds\n", timeout);
+	pthread_mutex_init(&timeoutMutex, NULL);
+
+	if(pthread_create(&timeoutThread, NULL, timeout_handle, NULL))
+	{
+		printf("create timeout thread fail.\n");
+	}
 	
 	while (1) {
 		ret = read(fd, &inputevent, sizeof(struct input_event));
@@ -104,11 +136,13 @@ int main(int argc, char * const argv[])
 				switch(inputevent.code) {
 					case KEY_PROG1: /* SW WDT triger*/
 						if(!inputevent.value) {
-							if (test == 0) {
-								ioctl(wdt_fd, WDIOC_KEEPALIVE, 0);
-							} else {
-								write(wdt_fd, "\0", 1);
+							pthread_mutex_lock(&timeoutMutex);
+							if(gTimeout > 0)
+							{
+								printf("WDT KEEPALIVE\n");
+								gTimeout = timeout;
 							}
+							pthread_mutex_unlock(&timeoutMutex);
 						}
 					break;
 				}
@@ -118,14 +152,12 @@ int main(int argc, char * const argv[])
 
 	print_result(argv);
 
-	close(wdt_fd);
 	close(fd);
 	return 0;
 }
 
 void help_info(void)
 {
-	printf("Usage: wdt_driver_test <timeout> <test>\n");
+	printf("Usage: wdt_driver_test <timeout>\n");
 	printf("    timeout: value in seconds to cause wdt timeout/reset\n");
-	printf("    test: 0 - Service wdt with ioctl(), 1 - with write()\n");
 }
