@@ -63,22 +63,11 @@ int getLinuxBase(int* distro)
 		*distro = UBUNTU_DISTRO;
 		printf("getLinuxBase: Ubuntu\n");
 	}
-	else if ( strstr(os_distro , "Yocto") != NULL) {
+	else { //Yocto
 		*distro = YOCTO_DISTRO;
-		printf("getLinuxBase: Yocto\n");
+                printf("getLinuxBase: Yocto\n");
 	}
-	else if ( strstr(os_distro , "sumo") != NULL) {
-		*distro = YOCTO_DISTRO;
-		printf("getLinuxBase: Yocto 2.5\n");
-	}
-	else if ( strstr(os_distro , "zeus") != NULL) {
-		*distro = YOCTO_DISTRO;
-		printf("getLinuxBase: Yocto 3.0\n");
-	}
-	else { //Ltib
-		pclose(pp);
-		return FALSE;
-	}
+
 	pclose(pp);
 	return TRUE;
 }
