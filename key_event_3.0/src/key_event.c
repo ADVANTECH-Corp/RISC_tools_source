@@ -7,11 +7,15 @@
 #include <linux/input.h>
 #include <string.h>
 #include <signal.h>
+#include <pthread.h>
 
 #define TRUE		1
 #define FALSE		0
 #define	GPIO_NAME	"gpio-keys"
 #define MCU		"MCU"
+#define TIME_COUNT_DEFAULT 1
+
+int time_count = TIME_COUNT_DEFAULT;
 
 enum distro {
 	UBUNTU_DISTRO = 1,
@@ -124,6 +128,22 @@ int Check_CPU()
 		return FALSE;
 }
 
+static void * handle_time_count(void *arg)
+{
+	while(1)
+	{
+		time_count++;
+
+		if( time_count == 2147483646 ) /* Avoid Overflow */
+		{
+			time_count = TIME_COUNT_DEFAULT;
+		}
+
+		usleep(1000000);
+	}
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	int fd, ret ,suspend_flag=0;
@@ -132,6 +152,7 @@ int main(int argc, char **argv)
 	int os_distro;
 	struct timeval start_time,end_time;
 	unsigned long long  interval_time;
+	pthread_t time_count_thread = NULL;
 
 	// Get OS Distro
 	if(!getLinuxBase(&os_distro)) {
@@ -154,6 +175,10 @@ int main(int argc, char **argv)
 	} else
 		printf("%s: Open gpio-keys success.\n", argv[0]);
 
+	if(pthread_create(&time_count_thread, NULL, handle_time_count, NULL)) {
+		printf("Create time_count thread failed.\n");
+	}
+
 	while(1) {
 		ret = read(fd,&inputevent,sizeof(struct input_event));
 
@@ -170,25 +195,31 @@ int main(int argc, char **argv)
 					break;
 
 					case KEY_SUSPEND:
-						if(!suspend_flag) { /* sleep mode */
+						if(!suspend_flag && time_count >= TIME_COUNT_DEFAULT) { /* sleep mode */
 							if(!inputevent.value) {
 								suspend_flag = 1;
 								SuspendProcess(os_distro);
 							}
 						} else  /* wake up mode */
 							if(inputevent.value)
+							{
 								suspend_flag = 0;
+								time_count = 0;
+							}
 					break;
 
 					case KEY_SLEEP:
-						if(!suspend_flag) { /* sleep mode */
+						if(!suspend_flag && time_count >= TIME_COUNT_DEFAULT) { /* sleep mode */
 							if(!inputevent.value) {
 								suspend_flag = 1;
 								SuspendProcess(os_distro);
 							}
 						} else  /* wake up mode */
 							if(!inputevent.value)
+							{
 								suspend_flag = 0;
+								time_count = 0;
+							}
 					break;
 				}
 				break;
