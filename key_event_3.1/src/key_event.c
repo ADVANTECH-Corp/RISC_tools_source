@@ -12,10 +12,13 @@
 #define TRUE		1
 #define FALSE		0
 #define	GPIO_NAME	"gpio-keys"
+#define	SNVS_NAME	"snvs-powerkey"
 #define MCU		"MCU"
+#define SNVS	"SNVS"
 #define TIME_COUNT_DEFAULT 1
 
 int time_count = TIME_COUNT_DEFAULT;
+static int snvs_pwrkey_pressed=-1;
 
 enum distro {
 	UBUNTU_DISTRO = 1,
@@ -33,7 +36,8 @@ int getEventName(char* ret_string)
 		fp = popen(cmd , "r");
 		fgets(event_name, sizeof(event_name), fp);
 		//printf("event%d name = %s\n",i,event_name);
-		if(strstr(event_name , GPIO_NAME ) != NULL) {
+		if((strstr(event_name , GPIO_NAME ) != NULL) || 
+			(strstr(event_name , SNVS_NAME ) != NULL)) {
 			sprintf(event_path, "/dev/input/event%d", i);
 			event_path[strlen(event_path)] = '\0';
 			strncpy(ret_string, event_path, strlen(event_path));
@@ -100,17 +104,44 @@ void PowerOffProcess()
 }
 int Check_Label(char *label)
 {
-        FILE* fp;
-        char cmd[64],buf[64];
-        sprintf(cmd, "cat /sys/firmware/devicetree/base/gpio-keys/*/label | grep %s -c -i", label);
-        fp = popen(cmd , "r");
-        memset(buf ,'\0', sizeof(buf));
-        fgets(buf, sizeof(buf), fp);
-        pclose(fp);
-        if (atoi(buf))
-                return TRUE;
-        else
-                return FALSE;
+	FILE* fp;
+	char cmd[64],buf[64];
+	int i=0;
+
+	memset(buf ,'\0', sizeof(buf));
+	if(strstr(label , MCU ) != NULL) {
+		sprintf(cmd, "cat /sys/firmware/devicetree/base/gpio-keys/*/label | grep %s -c -i", label);
+		fp = popen(cmd , "r");
+		fgets(buf, sizeof(buf), fp);
+		pclose(fp);
+	} else if(strstr(label , SNVS ) != NULL) {
+		printf("Check_Label SNVS\n");
+		while (1) {
+			sprintf(cmd, "cat /sys/class/input/input%d/name", i);
+			fp = popen(cmd , "r");
+			fgets(buf, sizeof(buf), fp);
+			pclose(fp);
+			if(strstr(buf, SNVS_NAME ) != NULL) {
+				break;
+			} else {
+				i++;
+				memset(buf ,'\0', sizeof(buf));	
+				sprintf(cmd, "test -d /sys/class/input/input%d && echo Exist",i);
+				fp = popen(cmd , "r");
+				fgets(buf, sizeof(buf), fp);
+				pclose(fp);
+				if ( strstr(buf, "Exist" ) == NULL ) {
+					memset(buf, '\0', sizeof(buf)); 
+					break;
+				}
+			}
+		}
+	}
+
+	if (atoi(buf))
+		return TRUE;
+	else
+		return FALSE;
 }
 
 int Check_CPU()
@@ -144,6 +175,29 @@ static void * handle_time_count(void *arg)
 	return NULL;
 }
 
+static void * handle_power_timeout(void *arg)
+{
+	struct timeval *start_time,end_time;
+	unsigned long long	interval_time;
+
+	start_time = arg;
+	while(1)
+	{
+		usleep(50000);
+		gettimeofday(&end_time,NULL);
+		interval_time = (end_time.tv_sec*1000000+end_time.tv_usec) - (start_time->tv_sec*1000000+start_time->tv_usec);
+		if(snvs_pwrkey_pressed && (interval_time > 1000000))
+		{
+			PowerOffProcess();
+			break;
+		} else if(!snvs_pwrkey_pressed)
+			break;
+	}
+
+	pthread_exit(0);
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	int fd, ret ,suspend_flag=0;
@@ -153,6 +207,7 @@ int main(int argc, char **argv)
 	struct timeval start_time,end_time;
 	unsigned long long  interval_time;
 	pthread_t time_count_thread = NULL;
+	pthread_t timeout_thread = NULL;
 
 	// Get OS Distro
 	if(!getLinuxBase(&os_distro)) {
@@ -164,7 +219,7 @@ int main(int argc, char **argv)
 	memset(event_cmd,'\0', sizeof(event_cmd));	
 
 	if(!getEventName(event_cmd)) {
-		printf("%s: Can't get %s event\n", argv[0], GPIO_NAME);
+		printf("%s: Can't get %s or %s event\n", argv[0], GPIO_NAME, SNVS_NAME);
 		return FALSE;
 	}
 
@@ -249,7 +304,7 @@ int main(int argc, char **argv)
 										if(Check_CPU()){ /*if cpu core > 2 , then we should enabel susepnd flag*/
 											printf("\n------suspend flag enable------\n");
 											suspend_flag = 1;
-											}
+										}
 										SuspendProcess(os_distro);
 									} else
 										PowerOffProcess();
@@ -259,6 +314,15 @@ int main(int argc, char **argv)
 									printf("\n------suspend flag disable------\n");
 									suspend_flag = 0;
 								}
+							}
+						} else if (Check_Label(SNVS)) {
+							if(inputevent.value) {
+								gettimeofday(&start_time,NULL);
+								snvs_pwrkey_pressed = 1;
+								if(pthread_create(&timeout_thread, NULL, handle_power_timeout, &start_time))
+									printf("Create handle_power_timeout thread failed.\n");
+							} else {
+								snvs_pwrkey_pressed = 0;
 							}
 						} else {
 							if(!suspend_flag) { /* sleep mode */
