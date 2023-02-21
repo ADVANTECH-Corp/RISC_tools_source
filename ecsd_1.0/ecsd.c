@@ -17,10 +17,10 @@
 static void help()
 {
 	printf("example:\n");
-	printf("./rpmb\n");
-	printf("./rpmb mmcblk*\n");
-	printf("./rpmb mmcblk* 0-511\n");
-	printf("./rpmb mmcblk* 0-511 1-512\n");
+	printf("ecsd\n");
+	printf("ecsd /dev/mmcblk*\n");
+	printf("ecsd /dev/mmcblk* 0-511\n");
+	printf("ecsd /dev/mmcblk* 0-511 1-512\n");
 }
 
 int main(int argc, char *argv[])
@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 		 switch(argc){
 			case 1 :
 			{   
-				if(strcmp(argv[0],"./ecsd")==0){
+				if(strcmp(argv[0],"ecsd")==0){
 					start_number=269;
 					size_number=3;
 				}
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 			case 2 :
 			{
 				strcpy(dev,argv[1]);
-				if(strcmp(argv[0],"./ecsd")==0){
+				if(strcmp(argv[0],"ecsd")==0){
 					printf("EXT_CSD:\n");
 					start_number=511;
 					size_number=512;
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 			{
 				strcpy(dev,argv[1]);
 				start_number=atoi(argv[2]);
-				if(strcmp(argv[0],"./ecsd")==0&&start_number>=0&&start_number<512){
+				if(strcmp(argv[0],"ecsd")==0&&start_number>=0&&start_number<512){
 					size_number=1;
 				}
 				else{
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 				strcpy(dev,argv[1]);
 				start_number=atoi(argv[2]);
 				size_number=atoi(argv[3]);
-				if(strcmp(argv[0],"./ecsd")==0&&start_number>=0&&start_number<512&&size_number>0&&size_number<start_number+2){
+				if(strcmp(argv[0],"ecsd")==0&&start_number>=0&&start_number<512&&size_number>0&&size_number<start_number+2){
 				}
 				else{
 					printf("argument error\n");
