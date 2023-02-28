@@ -13,8 +13,9 @@ trueout=`grep "[-]" emmc_life.log`
 rm emmc_life.log
 sync
 
-if [[ "$trueout" != "" ]];
+if [[ "$trueout" != "" ]]
     then
+
 case $log1 in
 "01")
   echo "0%-10% device life time used" 
@@ -48,38 +49,40 @@ case $log1 in
   echo "80%-90% device life time used"
    
   ;;
-"0A")
+"0A"|"0a")
   echo "90%-100% device life time used"
    
   ;;
-"0B")
+"0B"|"0b")
   echo "Exceeded its maximum estimated device life time"
    
   ;;
-"*")
+*)
  echo "Reserved"
   ;;
 esac
 
+
 case $log3 in
 "01")
-  echo "eMMC Normal"
-  exit 0 
+  echo "eMMC Normal" 
+  exit
   ;;
 "02")
-  echo "eMMC Waring Consumed 80% of reserved block"
-  exit 
+  echo "eMMC Waring Consumed 80% of reserved block" 
+  exit
   ;;
 "03")
-  echo "eMMC Urgent"
-  exit 
+  echo "eMMC Urgent" 
+  exit
   ;;
-"*")
-  echo "Reserved"
-  exit 
+*)
+  echo "Reserved" 
+  exit
   ;;
 esac
 
 else
-  echo "read error"
+echo "read error"
 fi
+
