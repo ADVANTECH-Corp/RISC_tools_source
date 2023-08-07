@@ -3,7 +3,7 @@ ls /dev/mmc* > emmc_life.log 2>&1
 getpath=`grep "boot" emmc_life.log |awk 'NR==1{print $1}'`
 device=`echo ${getpath:0:12}`
 
-echo "emmc path: $device"
+echo "eMMC node: $device"
 ecsd $device 269 3 > emmc_life.log 2>&1
 DEVICE_LIFE_TIME_EST_TYP_B=`cat emmc_life.log|awk '{print $2}'`
 DEVICE_LIFE_TIME_EST_TYP_A=`cat emmc_life.log|awk '{print $3}'`
@@ -14,9 +14,9 @@ rm emmc_life.log
 sync
 
 if [[ "$trueout" != "" ]];then
-    DEVICE_LIFE_TIME=$DEVICE_LIFE_TIME_EST_TYP_A
-    if [ $DEVICE_LIFE_TIME -lt $DEVICE_LIFE_TIME_EST_TYP_B ] ;then
-	DEVICE_LIFE_TIME=$DEVICE_LIFE_TIME_EST_TYP_B
+    DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_A))
+    if [ $DEVICE_LIFE_TIME -lt $((0x$DEVICE_LIFE_TIME_EST_TYP_B)) ] ;then
+	DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_B))
     fi
 
 case $DEVICE_LIFE_TIME in 
@@ -47,10 +47,10 @@ case $DEVICE_LIFE_TIME in
 "09")
 	echo "80%-90% device life time used"
 	;;
-"0A"|"0a")
+"10")
 	echo "90%-100% device life time used"
 	;;
-"0B"|"0b")
+"11")
 	echo "Exceeded its maximum estimated device life time"
 	;;
 *)
@@ -61,15 +61,15 @@ esac
 
 case $PRE_EOL_INFO in
 "01")
-	echo "eMMC Normal" 
+	echo "eMMC status: Normal" 
 	exit
 	;;
 "02")
-	echo "eMMC Waring Consumed 80% of reserved block" 
+	echo "eMMC status:eMMC Waring Consumed 80% of reserved block" 
 	exit
 	;;
 "03")
-	echo "eMMC Urgent" 
+	echo "eMMC status:Urgent" 
 	exit
 	;;
 *)
