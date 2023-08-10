@@ -12,52 +12,42 @@ trueout=`grep "[-]" emmc_life.log`
 
 rm emmc_life.log
 sync
+DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_A))
+if [ $DEVICE_LIFE_TIME -lt $((0x$DEVICE_LIFE_TIME_EST_TYP_B)) ] ;then
+	DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_B))
+fi
+
+TIMES=3
+LIFE=$[ ($DEVICE_LIFE_TIME - 1) * 10 ]
+
+print(){
+while [[ TIMES -lt 4 ]]
+        do
+        echo "eMMC: More than $LIFE% of the life  be used!" |tee -a /var/log/emmc_life.log
+       /bin/sleep 8
+        ((TIMES++))
+        done
+}
 
 if [[ "$trueout" != "" ]];then
-    DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_A))
-    if [ $DEVICE_LIFE_TIME -lt $((0x$DEVICE_LIFE_TIME_EST_TYP_B)) ] ;then
-	DEVICE_LIFE_TIME=$((0x$DEVICE_LIFE_TIME_EST_TYP_B))
-    fi
-
 case $DEVICE_LIFE_TIME in 
-"01")
-       	echo "0%-10% device life time used" 
-       	;;
-"02")
-	echo "10%-20% device life time used"
+"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8")
+	print
 	;;
-"03")
-	echo "20%-30% device life time used" 
-	;;
-"04")
-	echo "30%-40% device life time used" 
-	;;
-"05")
-	echo "40%-50% device life time used"
-	;;
-"06")
-	echo "50%-60% device life time used"
-	;;
-"07")
-	echo "60%-70% device life time used"
-	;;
-"08")
-	echo "70%-80% device life time used"
-	;;
-"09")
-	echo "80%-90% device life time used"
-	;;
-"10")
-	echo "90%-100% device life time used"
+"9"|"10")
+	TIMES=1
+	print
+	echo "[eMMC life Warning!!]"
 	;;
 "11")
-	echo "Exceeded its maximum estimated device life time"
+	TIMES=1
+	print
+        echo "The eMMc life Exceeds estimates"
 	;;
 *)
 	echo "Reserved"
 	;;
 esac
-
 
 case $PRE_EOL_INFO in
 "01")
@@ -79,6 +69,7 @@ case $PRE_EOL_INFO in
 esac
 
 else
-	echo "read error"
+	echo "eMMC Read error!"
+	exit
 fi
 

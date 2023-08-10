@@ -1,0 +1,15 @@
+[Unit]
+Description=eMMc-life-Service
+ConditionPathExists=/tools/emmc_lifetime.sh
+After=containerd.service
+
+[Service]
+Type=forking
+ExecStart=/bin/sh -c "/tools/emmc_lifetime.sh &"
+TimeoutSec=1
+StandardOutput=tty
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+
